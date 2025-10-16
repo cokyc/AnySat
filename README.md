@@ -62,7 +62,7 @@ Arrange your data in a dictionary with any of the following keys:
 | aerial        | Single date tensor |Bx4xHxW                                              | RGB, NiR                                  | 0.2m       |
 | aerial-flair  | Single date tensor |Bx5xHxW                                              | RGB, NiR, Elevation                       | 0.2m       |
 | spot          | Single date tensor |Bx3xHxW                                              | RGB                                       | 1m         |
-| naip          | Single date tensor |Bx4xHxW                                              | RGB                                       | 1.25m      |
+| naip          | Single date tensor |Bx4xHxW                                              | RGB, NIR                                  | 1.25m      |
 | s2            | Time series tensor |BxTx10xHxW                                           | B2, B3, B4, B5, B6, B7, B8, B8a, B11, B12 | 10m        |
 | s1-asc        | Time series tensor |BxTx2xHxW                                            | VV, VH                                    | 10m        |
 | s1            | Time series tensor |BxTx3xHxW                                            | VV, VH, Ratio                             | 10m        |
