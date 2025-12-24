@@ -93,9 +93,15 @@ class BiTemporalS1S2(Dataset):
       ├── val_list.json
       ├── test_list.json
       ├── S1/
-      │   └── {sample_id}.tif  # Shape: (4, 256, 256) - 2 dates × 2 bands (VV, VH)
+      │   ├── pre/
+      │   │   └── {sample_id}.tif  # Shape: (2, 256, 256) - VV, VH for date 1
+      │   └── post/
+      │       └── {sample_id}.tif  # Shape: (2, 256, 256) - VV, VH for date 2
       ├── S2/
-      │   └── {sample_id}.tif  # Shape: (26, 256, 256) - 2 dates × 13 bands
+      │   ├── pre/
+      │   │   └── {sample_id}.tif  # Shape: (13, 256, 256) - 13 bands for date 1
+      │   └── post/
+      │       └── {sample_id}.tif  # Shape: (13, 256, 256) - 13 bands for date 2
       ├── dates/
       │   └── {sample_id}.json  # {"s1": [20200101, 20200615], "s2": [20200105, 20200620]}
       └── labels/  (optional, for segmentation fine-tuning)
@@ -200,61 +206,43 @@ class BiTemporalS1S2(Dataset):
         print(f"Saved normalization stats to {norm_file}")
     
     def _load_modality(self, sample_id, modality):
-        """Load data for a specific modality from GeoTIFF or NumPy."""
-        # Try .tif first, then .npy
-        tif_file = os.path.join(self.path, modality.upper(), f'{sample_id}.tif')
-        npy_file = os.path.join(self.path, modality.upper(), f'{sample_id}.npy')
+        """Load data for a specific modality from GeoTIFF (pre and post separately)."""
+        # Load pre and post images
+        pre_file = os.path.join(self.path, modality.upper(), 'pre', f'{sample_id}.tif')
+        post_file = os.path.join(self.path, modality.upper(), 'post', f'{sample_id}.tif')
         
-        if os.path.exists(tif_file):
-            # Load from GeoTIFF
-            with rasterio.open(tif_file) as src:
-                data = src.read()  # Shape: (bands, H, W)
-                data = torch.from_numpy(data).float()
-            
-            # Reshape from (T*C, H, W) to (T, C, H, W)
-            if modality == 's1':
-                # S1: 4 bands = 2 dates × 2 channels (VV, VH)
-                # Reshape (4, H, W) → (2, 2, H, W)
-                if data.shape[0] != 4:
-                    raise ValueError(f"Expected 4 bands for S1 (2 dates × 2 channels), got {data.shape[0]} for {tif_file}")
-                data = data.reshape(2, 2, data.shape[1], data.shape[2])
-            elif modality == 's2':
-                # S2: 26 bands = 2 dates × 13 channels
-                # Reshape (26, H, W) → (2, 13, H, W)
-                if data.shape[0] != 26:
-                    raise ValueError(f"Expected 26 bands for S2 (2 dates × 13 channels), got {data.shape[0]} for {tif_file}")
-                data = data.reshape(2, 13, data.shape[1], data.shape[2])
-            else:
-                # Generic: assume first dimension is T*C, reshape accordingly
-                print(f"Warning: Unknown modality {modality}, assuming bi-temporal stacking")
-                n_bands = data.shape[0]
-                n_channels = n_bands // 2
-                data = data.reshape(2, n_channels, data.shape[1], data.shape[2])
-                
-        elif os.path.exists(npy_file):
-            # Load from NumPy - already in correct shape (T*C, H, W) or (T, C, H, W)
-            data = torch.from_numpy(np.load(npy_file)).float()
-            
-            # Check if needs reshaping
-            if data.ndim == 3:
-                # Shape: (T*C, H, W) - need to reshape
-                if modality == 's1':
-                    if data.shape[0] != 4:
-                        raise ValueError(f"Expected 4 bands for S1, got {data.shape[0]} for {npy_file}")
-                    data = data.reshape(2, 2, data.shape[1], data.shape[2])
-                elif modality == 's2':
-                    if data.shape[0] != 26:
-                        raise ValueError(f"Expected 26 bands for S2, got {data.shape[0]} for {npy_file}")
-                    data = data.reshape(2, 13, data.shape[1], data.shape[2])
-                else:
-                    n_bands = data.shape[0]
-                    n_channels = n_bands // 2
-                    data = data.reshape(2, n_channels, data.shape[1], data.shape[2])
-            # If already 4D, assume it's already in correct shape (T, C, H, W)
-        else:
-            raise FileNotFoundError(f"Data file not found: {tif_file} or {npy_file}")
+        if not os.path.exists(pre_file):
+            raise FileNotFoundError(f"Pre-flood data file not found: {pre_file}")
+        if not os.path.exists(post_file):
+            raise FileNotFoundError(f"Post-flood data file not found: {post_file}")
         
-        # Validate final shape
+        # Load pre image
+        with rasterio.open(pre_file) as src:
+            data_pre = src.read()  # Shape: (bands, H, W)
+            data_pre = torch.from_numpy(data_pre).float()
+        
+        # Load post image
+        with rasterio.open(post_file) as src:
+            data_post = src.read()  # Shape: (bands, H, W)
+            data_post = torch.from_numpy(data_post).float()
+        
+        # Stack temporal dimension: (2, C, H, W)
+        # Add temporal dimension and concatenate
+        data_pre = data_pre.unsqueeze(0)  # (1, C, H, W)
+        data_post = data_post.unsqueeze(0)  # (1, C, H, W)
+        data = torch.cat([data_pre, data_post], dim=0)  # (2, C, H, W)
+        
+        # Validate shape
+        if modality == 's1':
+            # S1: should be (2, 2, H, W) - 2 dates × 2 channels (VV, VH)
+            if data.shape[1] != 2:
+                raise ValueError(f"Expected 2 channels for S1 (VV, VH), got {data.shape[1]} for {pre_file}")
+        elif modality == 's2':
+            # S2: should be (2, 13, H, W) - 2 dates × 13 channels
+            if data.shape[1] != 13:
+                raise ValueError(f"Expected 13 channels for S2, got {data.shape[1]} for {pre_file}")
+        
+        # Final validation
         if data.ndim != 4:
             raise ValueError(f"Expected 4D data (T, C, H, W), got shape {data.shape}")
         if data.shape[0] != 2:
@@ -308,16 +296,11 @@ class BiTemporalS1S2(Dataset):
                 output[f'{modality}_dates'] = torch.tensor([0, 180])
         
         # Load label if available (for fine-tuning)
-        label_tif = os.path.join(self.path, 'labels', f'{sample_id}.tif')
-        label_npy = os.path.join(self.path, 'labels', f'{sample_id}.npy')
-        
-        if os.path.exists(label_tif):
-            with rasterio.open(label_tif) as src:
+        label_file = os.path.join(self.path, 'labels', f'{sample_id}.tif')
+        if os.path.exists(label_file):
+            with rasterio.open(label_file) as src:
                 label = src.read(1)  # Read first band
                 label = torch.from_numpy(label).long()
-            output['label'] = label
-        elif os.path.exists(label_npy):
-            label = torch.from_numpy(np.load(label_npy)).long()
             output['label'] = label
         else:
             # Dummy label for self-supervised pretraining
