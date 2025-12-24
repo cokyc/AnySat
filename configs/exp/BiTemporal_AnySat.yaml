@@ -1,0 +1,24 @@
+# @package _global_
+
+defaults:
+  - override /dataset: BiTemporalS1S2
+  - override /model: JEPA
+  - override /model/network: JEPAAny
+  - override /model/network/encoder: Any_Base
+  - override /model/loss: AnySat_JEPA
+
+model:
+  name: "BiTemporal_AnySat"
+  optimizer:
+    lr: 5e-5
+
+callbacks:
+  early_stopping:
+    patience: 200
+
+# Modalities for bi-temporal multi-sensor
+modalities:
+  - "s1"    # Sentinel-1 (2 bands: VV, VH)
+  - "s2"    # Sentinel-2 (13 bands)
+
+max_epochs: 300

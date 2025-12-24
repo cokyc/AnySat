@@ -1,0 +1,53 @@
+defaults:
+  - train_transform: Identity
+  - test_transform: Identity
+  - _self_
+
+name: BiTemporalS1S2
+global_batch_size: 4
+num_classes: 0  # No classes for self-supervised pretraining
+height: 256  # Input image size 256x256 at 10m/px
+width: 256
+num_patches: 65536  # 256*256 = 65536 patches at 1x1, will be divided by patch size
+len: 10000  # Update this with your actual dataset size
+true_len: 10000  # Total training samples
+true_len_val: 2000  # Total validation samples
+reduce_factor: 1  # Adjust if you want to subsample
+norm_path: ${data_dir}
+temporal_dropout: 0  # No dropout for bi-temporal (only 2 dates)
+
+# Iteration calculation for training loop
+iter: ${eval:'${dataset.true_len} // (${dataset.reduce_factor} * ${dataset.global_batch_size})'}
+iter_val: ${eval:'${dataset.true_len_val} // (${dataset.reduce_factor} * ${dataset.global_batch_size})'}
+
+
+train_dataset:
+  _partial_: true
+  _target_: data.BiTemporalS1S2.BiTemporalS1S2
+  path: ${data_dir}
+  split: train
+  transform: ${dataset.train_transform}
+  partition: ${partition}
+  modalities: ${modalities}
+  norm_path: ${dataset.norm_path}
+  temporal_dropout: ${dataset.temporal_dropout}
+
+val_dataset:
+  _partial_: true
+  _target_: data.BiTemporalS1S2.BiTemporalS1S2
+  path: ${data_dir}
+  split: val
+  transform: ${dataset.test_transform}
+  partition: 1.0
+  modalities: ${modalities}
+  norm_path: ${dataset.norm_path}
+
+test_dataset:
+  _partial_: true
+  _target_: data.BiTemporalS1S2.BiTemporalS1S2
+  path: ${data_dir}
+  split: test
+  transform: ${dataset.test_transform}
+  partition: 1.0
+  modalities: ${modalities}
+  norm_path: ${dataset.norm_path}

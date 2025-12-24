@@ -1,0 +1,37 @@
+# @package _global_
+
+defaults:
+  - override /dataset: BiTemporalS1S2
+  - override /model: SemSeg
+  - override /model/network: Fine_tuning_SemSeg
+  - override /model/network/encoder: Any_Base
+
+dataset:
+  classif: False  # Dense segmentation, not classification
+  num_classes: 10  # Update with your number of segmentation classes
+
+model:
+  name: "BiTemporal_AnySat_FineTuning_SemSeg"
+  optimizer:
+    lr: 1e-4
+  network:
+    encoder:
+      scale: 4
+      keep_subpatch: True
+      modality_keep: "s2"  # Use S2 as main modality
+    instance:
+      name: "target_encoder"
+      path: ${paths.log_dir}/BiTemporal_AnySat/checkpoints/best.ckpt  # Path to pretrained model
+
+callbacks:
+  early_stopping:
+    monitor: "val/mIoU"
+    mode: "max"
+    patience: 20
+
+# Modalities for fine-tuning
+modalities:
+  - "s1"
+  - "s2"
+
+max_epochs: 100
